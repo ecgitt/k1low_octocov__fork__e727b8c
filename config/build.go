@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/k1LoW/octocov/internal"
 )
@@ -28,7 +29,20 @@ func (c *Config) Build() {
 		var paths []string
 		for _, p := range c.Coverage.Paths {
 			p = filepath.FromSlash(p)
-			paths = append(paths, filepath.Join(filepath.Dir(c.path), p))
+			globPath := p
+			if !filepath.IsAbs(p) {
+				globPath = filepath.Join(filepath.Dir(c.path), p)
+			}
+			matches, err := filepath.Glob(globPath)
+			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "warn: %s\n", err) //nostyle:handlerrors
+				continue
+			}
+			if len(matches) > 0 {
+				paths = append(paths, matches...)
+			} else if !strings.ContainsAny(p, "*?[") {
+				paths = append(paths, globPath)
+			}
 		}
 		c.Coverage.Paths = paths
 	}

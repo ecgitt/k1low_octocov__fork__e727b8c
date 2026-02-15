@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -128,29 +129,69 @@ func TestLoadLocale(t *testing.T) {
 }
 
 func TestCoveragePaths(t *testing.T) {
+	tmpDir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	// Setup test files
+	configPath := filepath.Join(tmpDir, ".octocov.yml")
+	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmpDir, "domain", "service1"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	lcov1 := filepath.Join(tmpDir, "domain", "service1", "lcov.info")
+	if err := os.WriteFile(lcov1, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmpDir, "domain", "service2"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	lcov2 := filepath.Join(tmpDir, "domain", "service2", "lcov.info")
+	if err := os.WriteFile(lcov2, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	coverageOut := filepath.Join(tmpDir, "coverage.out")
+	if err := os.WriteFile(coverageOut, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
-		paths      []string
-		configPath string
-		want       []string
+		paths []string
+		want  []string
 	}{
-		{[]string{"a/b/coverage.out"}, "path/to/.octocov.yml", []string{"path/to/a/b/coverage.out"}},
-		{[]string{}, "path/to/.octocov.yml", []string{"path/to"}},
-		{[]string{"a/b/coverage.out"}, ".octocov.yml", []string{"a/b/coverage.out"}},
+		{[]string{"domain/*/lcov.info"}, []string{lcov1, lcov2}},
+		{[]string{"*.out"}, []string{coverageOut}},
+		{[]string{"non-existent.file"}, []string{filepath.Join(tmpDir, "non-existent.file")}},
+		{[]string{"non-existent-*.file"}, []string{}},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%v", tt.paths), func(t *testing.T) {
 			c := New()
-			c.path = filepath.FromSlash(tt.configPath)
+			c.path = configPath
 			c.Coverage = &Coverage{
 				Paths: tt.paths,
 			}
 			c.Build()
 			got := c.Coverage.Paths
-			var want []string
-			for _, p := range tt.want {
-				want = append(want, filepath.FromSlash(p))
-			}
-			if diff := cmp.Diff(got, want, nil); diff != "" {
+
+			want := tt.want
+			// Sort for consistent comparison
+			sort.Strings(got)
+			sort.Strings(want)
+
+			if diff := cmp.Diff(want, got); diff != "" {
 				t.Error(diff)
 			}
 		})
